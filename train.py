@@ -4,6 +4,7 @@ import pdb
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from torchvision import transforms
+import numpy as np
 
 from ActionYolo import ActionYolo
 from detectionLoss import DetectionLoss
@@ -11,7 +12,6 @@ from dataLoader import UCFDataLoader, Rescale
 
 class Trainer():
     def __init__(self, init_model = None):
-        self.opts = opts
         self.num_classes = 24
         self.num_boxes = 2
         self.image_size = 448

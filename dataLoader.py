@@ -6,7 +6,7 @@ import io
 from torch.utils.data import Dataset, DataLoader
 from glob import glob
 import h5py
-import time
+import numpy as np
 
 import ActionYolo
 import pdb
@@ -27,8 +27,6 @@ class UCFDataLoader(Dataset):
         return len(self.annotations['annot'][0])
 
     def __getitem__(self, idx):
-        start = time.time()
-
         example_name = self.annotations['annot'][0][idx][1][0]
 
         action = self.annotations['annot'][0][idx][2][0][0][2][0][0]

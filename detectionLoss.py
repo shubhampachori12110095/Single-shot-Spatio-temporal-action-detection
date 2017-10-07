@@ -37,8 +37,8 @@ class DetectionLoss(torch.nn.Module):
         tx, ty, tw, th = torch.t(true_coords).float()
 
         # adjust groundtruth to fit YOLO coordinates format
-        tx = tx + (tw / 2.0)
-        ty = ty + (th / 2.0)
+        tx = torch.clamp(tx + (tw / 2.0), max=self.image_size - 1)
+        ty = torch.clamp(ty + (th / 2.0), max=self.image_size - 1)
 
         cell_x = torch.floor(tx / self.cell_size).long()
         cell_y = torch.floor(ty / self.cell_size).long()

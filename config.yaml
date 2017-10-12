@@ -1,0 +1,8 @@
+ucf_rootDir: '/export/mlrg/aelnouby/projects/Datasets/UCF24/images/'
+ucf_annotations: '/export/mlrg/aelnouby/projects/Datasets/UCF24/finalAnnots.mat'
+#ucf_flowDir: '/export/mlrg/aelnouby/projects/Datasets/UCF24/flowImages/'
+ucf_flowDir: '/export/mlrg/aelnouby/projects/Datasets/UCF24/encodedFlow/'
+ucf_rgbImages: '/export/mlrg/aelnouby/projects/Datasets/UCF24/rgb/'
+ucf_dataset: '/scratch/aelnouby/ucf24/ucf24.hdf5'
+
+

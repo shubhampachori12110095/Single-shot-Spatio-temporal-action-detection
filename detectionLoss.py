@@ -4,7 +4,7 @@ import numpy as np
 from torch.autograd import Variable
 import torch.nn.functional as F
 from utils import Logger
-
+import pdb
 
 
 class DetectionLoss(torch.nn.Module):
@@ -12,7 +12,7 @@ class DetectionLoss(torch.nn.Module):
     Detection loss function.
     """
 
-    def __init__(self, num_classes, num_boxes, grid_size, image_size, iouThresh=0.5, coord_scale = 5, noobj_scale = 1):
+    def __init__(self, num_classes, num_boxes, grid_size, image_size, iouThresh=0.5, coord_scale = 1, noobj_scale = 1):
         super(DetectionLoss, self).__init__()
         self.num_classes = num_classes
         self.num_boxes = num_boxes
@@ -47,26 +47,24 @@ class DetectionLoss(torch.nn.Module):
         tx = tx - (cell_x.float() * self.cell_size)
         ty = ty - (cell_y.float() * self.cell_size)
 
-        I_obj = torch.zeros(batch_size, self.grid_size, self.grid_size)
-
-        # Flip the coordinates (images(column:row))
-        I_obj[torch.arange(0, batch_size).long(), cell_x, cell_y] = 1
-        I_obj = Variable(I_obj.cuda())
-
-        I_noobj = Variable(torch.ones(batch_size, self.grid_size, self.grid_size).cuda() - I_obj.data)
-
-
+        print(predicted_bbox.size())
         cell_boxes = predicted_bbox.contiguous() \
-                    .view(-1, self.grid_size, self.grid_size, 8) \
+                    .permute(0, 2, 3, 1) \
                     [torch.arange(0, batch_size).long().cuda(), cell_x.cuda(), cell_y.cuda()]
 
         confIoUs, responsible_boxes = self.iou([tx, ty, tw, th], cell_boxes)
 
+        I_obj = torch.zeros(batch_size, self.grid_size, self.grid_size, self.num_boxes)
+
+        I_obj[torch.arange(0, batch_size).long(), cell_x, cell_y, responsible_boxes] = 1
+        I_obj = Variable(I_obj.cuda())
+
+        I_noobj = Variable(torch.ones(batch_size, self.grid_size, self.grid_size, self.num_boxes).cuda() - I_obj.data)
 
         # ToDo: Check this reshape
-        px, py, pw, ph = cell_boxes.view(batch_size, 2, 4)[torch.arange(0, batch_size).long().cuda(), torch.LongTensor(responsible_boxes).cuda(), :].t()
+        cell_px, cell_py, cell_pw, cell_ph = cell_boxes.view(batch_size, 4, 2).permute(0, 2, 1)[torch.arange(0, batch_size).long().cuda(), torch.LongTensor(responsible_boxes).cuda(), :].t()
 
-        pc = region_confidence[torch.arange(0, batch_size).long().cuda(), torch.LongTensor(responsible_boxes).cuda(), :, :]
+        pc = region_confidence #[torch.arange(0, batch_size).long().cuda(), torch.LongTensor(responsible_boxes).cuda(), :, :]
 
         tc = Variable(torch.zeros(self.grid_size, self.grid_size)).cuda()
         tc[cell_x.cuda(), cell_y.cuda()] = dtype(confIoUs).cuda()
@@ -75,6 +73,22 @@ class DetectionLoss(torch.nn.Module):
         ty = Variable(ty.cuda())
         tw = Variable(tw.cuda())
         th = Variable(th.cuda())
+
+        cell_tx, cell_ty, cell_tw, cell_th = tx, ty, tw, th
+
+        px, py, pw, ph = predicted_bbox.permute(1, 2, 3, 0).contiguous().view(4, 2, self.grid_size, self.grid_size, -1)
+
+        px = px.permute(3, 1, 2, 0)
+        py = py.permute(3, 1, 2, 0)
+        pw = pw.permute(3, 1, 2, 0)
+        ph = ph.permute(3, 1, 2, 0)
+
+        # pdb.set_trace()
+
+        tx = torch.mul(I_obj, tx.expand(self.num_boxes, self.grid_size, self.grid_size, batch_size).permute(3, 2, 1, 0))
+        ty = torch.mul(I_obj, ty.expand(self.num_boxes, self.grid_size, self.grid_size, batch_size).permute(3, 2, 1, 0))
+        tw = torch.mul(I_obj, tw.expand(self.num_boxes, self.grid_size, self.grid_size, batch_size).permute(3, 2, 1, 0))
+        th = torch.mul(I_obj, th.expand(self.num_boxes, self.grid_size, self.grid_size, batch_size).permute(3, 2, 1, 0))
 
         pw = F.relu(pw).clamp(max=self.image_size)
         ph = F.relu(ph).clamp(max=self.image_size)
@@ -88,15 +102,15 @@ class DetectionLoss(torch.nn.Module):
         one_hot_label[:, label - 1] = 1
         one_hot_label = Variable(one_hot_label).cuda()
 
-        coord_loss = self.coord_scale * torch.sum(((tx - px)**2 + (ty - py)**2)) + \
-                     self.coord_scale * torch.sum(((t_sqrt_w - p_sqrt_w)**2 + (t_sqrt_h - p_sqrt_h)**2))
+        coord_loss = self.coord_scale * torch.sum(I_obj*((tx - px)**2 + (ty - py)**2)) + \
+                     self.coord_scale * torch.sum(I_obj*((t_sqrt_w - p_sqrt_w)**2 + (t_sqrt_h - p_sqrt_h)**2))
 
         object_loss = torch.sum(I_obj * (tc - pc)**2) + \
                       self.noobj_scale * torch.sum(I_noobj * (tc - pc)**2)
 
-        class_loss = torch.sum(I_obj * torch.sum((F.softmax(class_confidence) - one_hot_label)**2, 1))
+        class_loss = torch.sum(I_obj[:, :, :, 0] * torch.sum((F.softmax(class_confidence) - one_hot_label)**2, 1))
 
-        Logger.log_losses([px, py, pw, ph], [tx, ty, tw, th], coord_loss, object_loss, class_loss, confIoUs)
+        Logger.log_losses([cell_px, cell_py, cell_pw, cell_ph], [cell_tx, cell_ty, cell_tw, cell_th], coord_loss, object_loss, class_loss, confIoUs)
 
         return coord_loss + object_loss + class_loss
 
@@ -119,9 +133,11 @@ class DetectionLoss(torch.nn.Module):
             max_iou = -1
             responsible_prediction = -1
 
-            for idx in range(int(len(sample)/4)):
+            boxes = sample.view(4, 2).t()
 
-                px, py, pw, ph = sample[idx*4:idx*4+4]
+            for idx in range(len(boxes)):
+
+                px, py, pw, ph = boxes[idx]
 
                 px1 = px - (pw / 2.0)
                 px2 = px + (pw / 2.0)

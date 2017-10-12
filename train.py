@@ -21,7 +21,7 @@ class Trainer():
 
         self.dataSet = UCFDataLoader(config['ucf_dataset'],
                                      config['ucf_annotations'],
-                                     transform=transforms.Compose([Rescale(self.image_size)]))
+                                     transform=transforms.Compose([Rescale(self.image_size)]), subsample=True)
 
         self.net = ActionYolo(num_class=self.num_classes, bbox_num=self.num_boxes).cuda()
 
@@ -36,10 +36,10 @@ class Trainer():
         self.temporal_channels = 2
 
     def train(self):
-        dataLoader = DataLoader(self.dataSet, batch_size=1, shuffle=True)
+        dataLoader = DataLoader(self.dataSet, batch_size=1, shuffle=True, pin_memory=True)
         criterion = DetectionLoss(self.num_classes, self.num_boxes, 7, self.image_size)
 
-        optimizer = torch.optim.Adam(self.myDNN.parameters(), lr=1e-2)
+        optimizer = torch.optim.Adam(self.myDNN.parameters(), lr=5e-2)
 
         for epoch in range(self.num_epochs):
             print("Epoch : ", epoch)
@@ -49,12 +49,12 @@ class Trainer():
                 start_frame = ex['startFrame'][0] - 1
                 end_frame = ex['endFrame'][0] - 1
                 action_bbox = ex['bbox'][0]
-                frames = frames[start_frame:end_frame + 1]
-                flow_images = ex['flowFrames'][0][start_frame:end_frame + 1]
+                # frames = frames[start_frame:end_frame + 1]
+                flow_images = ex['flowFrames'][0]#[start_frame:end_frame + 1]
 
                 for b in range(0, len(frames), self.batch_size):
 
-                    print("frames : ", str(b) + "-" + str(b+self.batch_size))
+                    print("Epoch:" + str(epoch) + ", frames : ", str(b) + "-" + str(b+self.batch_size))
 
                     batch = frames[b : b + self.batch_size]
                     batch_flow = flow_images[b : b + self.batch_size]
@@ -72,5 +72,4 @@ class Trainer():
                     loss.backward()
                     optimizer.step()
 
-                if epoch > 0 and epoch%100 == 0:
                     torch.save(self.net.state_dict(), 'models/' + str(epoch) + '.pth')

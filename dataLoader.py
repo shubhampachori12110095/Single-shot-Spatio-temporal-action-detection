@@ -16,17 +16,21 @@ from torch.autograd import Variable
 
 class UCFDataLoader(Dataset):
 
-    def __init__(self, datasetFile, matFile, transform=None):
+    def __init__(self, datasetFile, matFile, transform=None, subsample=False):
 
         self.datasetFile = datasetFile
+        self.subsample = subsample
         self.annotations = loadmat(matFile)
         self.transform = transform
-        self.dataset = h5py.File(self.datasetFile, 'r')
+        self.dataset = None
 
     def __len__(self):
         return len(self.annotations['annot'][0])
 
     def __getitem__(self, idx):
+        if self.dataset is None:
+            self.dataset = h5py.File(self.datasetFile, mode='r')
+
         example_name = self.annotations['annot'][0][idx][1][0]
 
         action = self.annotations['annot'][0][idx][2][0][0][2][0][0]
@@ -42,6 +46,12 @@ class UCFDataLoader(Dataset):
 
         rgb_frames = np.array([np.array(Image.open(io.BytesIO(im)), dtype=float) for im in encoded_rgb_frames], dtype=float).transpose(0, 3, 1, 2)
         flow_frames = np.array([np.array(cv2.imdecode(np.fromstring(ff, np.uint8), 1)[..., :2], dtype=float) for ff in encoded_flow_frames], dtype=float).transpose(0, 3, 1, 2)
+
+        if self.subsample:
+            idx = range(startFrame - 1, endFrame, 5)
+            rgb_frames = rgb_frames[idx]
+            flow_frames = flow_frames[idx]
+            bboxes = bboxes[range(0, len(bboxes), 5)]
 
         sample = {
                   'frames': rgb_frames,

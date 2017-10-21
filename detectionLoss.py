@@ -4,7 +4,9 @@ import numpy as np
 from torch.autograd import Variable
 import torch.nn.functional as F
 from utils import Logger
+from visualize import VisdomLinePlotter
 import pdb
+import visdom
 
 
 class DetectionLoss(torch.nn.Module):
@@ -12,7 +14,7 @@ class DetectionLoss(torch.nn.Module):
     Detection loss function.
     """
 
-    def __init__(self, num_classes, num_boxes, grid_size, image_size, iouThresh=0.5, coord_scale = 1, noobj_scale = 1):
+    def __init__(self, num_classes, num_boxes, grid_size, image_size, iouThresh=0.5, coord_scale = 5, noobj_scale = 1):
         super(DetectionLoss, self).__init__()
         self.num_classes = num_classes
         self.num_boxes = num_boxes
@@ -22,7 +24,8 @@ class DetectionLoss(torch.nn.Module):
         self.grid_size = grid_size
         self.image_size = image_size
         self.cell_size = torch.FloatTensor(np.array([self.image_size / self.grid_size]))
-
+        self.plotter = VisdomLinePlotter()
+        self.iteration = 0
 
     def forward(self, output, target):
         dtype = torch.FloatTensor
@@ -47,7 +50,6 @@ class DetectionLoss(torch.nn.Module):
         tx = tx - (cell_x.float() * self.cell_size)
         ty = ty - (cell_y.float() * self.cell_size)
 
-        print(predicted_bbox.size())
         cell_boxes = predicted_bbox.contiguous() \
                     .permute(0, 2, 3, 1) \
                     [torch.arange(0, batch_size).long().cuda(), cell_x.cuda(), cell_y.cuda()]
@@ -64,10 +66,11 @@ class DetectionLoss(torch.nn.Module):
         # ToDo: Check this reshape
         cell_px, cell_py, cell_pw, cell_ph = cell_boxes.view(batch_size, 4, 2).permute(0, 2, 1)[torch.arange(0, batch_size).long().cuda(), torch.LongTensor(responsible_boxes).cuda(), :].t()
 
-        pc = region_confidence #[torch.arange(0, batch_size).long().cuda(), torch.LongTensor(responsible_boxes).cuda(), :, :]
+        pc = region_confidence.permute(0, 2, 3, 1) #[torch.arange(0, batch_size).long().cuda(), torch.LongTensor(responsible_boxes).cuda(), :, :]
 
-        tc = Variable(torch.zeros(self.grid_size, self.grid_size)).cuda()
-        tc[cell_x.cuda(), cell_y.cuda()] = dtype(confIoUs).cuda()
+        tc = Variable(torch.zeros(batch_size, self.grid_size, self.grid_size)).cuda()
+        tc[torch.arange(0, batch_size).long().cuda(),cell_x.cuda(), cell_y.cuda()] = dtype(confIoUs).cuda()
+        tc = tc.expand(self.num_boxes, batch_size, self.grid_size, self.grid_size).permute(1, 2, 3, 0)
 
         tx = Variable(tx.cuda())
         ty = Variable(ty.cuda())
@@ -99,16 +102,30 @@ class DetectionLoss(torch.nn.Module):
         t_sqrt_h = torch.sqrt(th)
 
         one_hot_label = torch.zeros(batch_size, self.num_classes, self.grid_size, self.grid_size)
-        one_hot_label[:, label - 1] = 1
+        one_hot_label[torch.arange(0, batch_size).long(), label.long() - 1, cell_x, cell_y] = 1
         one_hot_label = Variable(one_hot_label).cuda()
 
-        coord_loss = self.coord_scale * torch.sum(I_obj*((tx - px)**2 + (ty - py)**2)) + \
-                     self.coord_scale * torch.sum(I_obj*((t_sqrt_w - p_sqrt_w)**2 + (t_sqrt_h - p_sqrt_h)**2))
+        coord_loss = (self.coord_scale * torch.sum(I_obj*((tx - px)**2 + (ty - py)**2)) + \
+                     self.coord_scale * torch.sum(I_obj*((t_sqrt_w - p_sqrt_w)**2 + (t_sqrt_h - p_sqrt_h)**2)))
 
         object_loss = torch.sum(I_obj * (tc - pc)**2) + \
                       self.noobj_scale * torch.sum(I_noobj * (tc - pc)**2)
 
         class_loss = torch.sum(I_obj[:, :, :, 0] * torch.sum((F.softmax(class_confidence) - one_hot_label)**2, 1))
+
+        # print(F.softmax(class_confidence).data.cpu().numpy()[0, :, cell_x[0], cell_y[0]])
+        # print(one_hot_label.data.cpu().numpy()[0, :, cell_x[0], cell_y[0]])
+        # print(np.argmax(F.softmax(class_confidence).data.cpu().numpy()[0, :, cell_x[0], cell_y[0]]))
+        # print(np.argmax(one_hot_label.data.cpu().numpy()[0, :, cell_x[0], cell_y[0]]))
+       
+        #pdb.set_trace()
+        self.plotter.plot("class loss", 'train', self.iteration, class_loss.data.cpu().numpy()[0])
+        self.plotter.plot("coord loss", 'train', self.iteration, coord_loss.data.cpu().numpy()[0])
+        self.plotter.plot("object loss", 'train', self.iteration, object_loss.data.cpu().numpy()[0])
+        self.plotter.plot("object loss [OBJ]", 'train', self.iteration, torch.sum(I_obj * (tc - pc)**2).data.cpu().numpy()[0])
+        self.plotter.plot("object loss [NOOBJ]", 'train', self.iteration, torch.sum(I_noobj * (tc - pc)**2).data.cpu().numpy()[0])
+        self.plotter.plot("Average IoU", 'train', self.iteration, np.mean(confIoUs))
+        self.iteration += 1
 
         Logger.log_losses([cell_px, cell_py, cell_pw, cell_ph], [cell_tx, cell_ty, cell_tw, cell_th], coord_loss, object_loss, class_loss, confIoUs)
 

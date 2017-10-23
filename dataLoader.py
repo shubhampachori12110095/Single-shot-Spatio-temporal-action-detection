@@ -15,7 +15,7 @@ import cv2
 import torch
 from torch.autograd import Variable
 
-class UCFDataLoader(Dataset):
+class UCFDataSet(Dataset):
 
     def __init__(self, datasetFile, matFile, transform=None, subsample=False):
 
@@ -50,13 +50,10 @@ class UCFDataLoader(Dataset):
         flow_frames = np.array([np.array(cv2.imdecode(np.fromstring(ff, np.uint8), 1)[..., :2], dtype=float) for ff in encoded_flow_frames], dtype=float).transpose(0, 3, 1, 2)
 
         if self.subsample:
-            mod = lambda x : x%(endFrame - startFrame)
-            # idx = startFrame + mod(self.pointer) #range(startFrame - 1, endFrame, 5)
-            idx = np.random.choice(range(startFrame-1, endFrame),8)
-            # end = idx + 8 if idx + 8 <= endFrame else endFrame
+            idx = np.random.choice(range(startFrame-1, endFrame), 8)
             rgb_frames = rgb_frames[idx]
             flow_frames = flow_frames[idx]
-            bboxes = bboxes[idx - startFrame + 1] #[range(0, len(bboxes), 5)]
+            bboxes = bboxes[idx - startFrame + 1]
 
         rgb_frames = (rgb_frames - np.mean(rgb_frames, axis=(2, 3)).reshape(*rgb_frames.shape[:2], 1, 1))\
                      / (np.std(rgb_frames, axis=(2, 3)).reshape(*rgb_frames.shape[:2], 1, 1) + 1e-7)

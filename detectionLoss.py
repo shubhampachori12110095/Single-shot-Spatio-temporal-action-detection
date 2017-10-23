@@ -4,7 +4,7 @@ import numpy as np
 from torch.autograd import Variable
 import torch.nn.functional as F
 from utils import Logger
-from visualize import VisdomLinePlotter
+from visualize import DetectionLossPlotter
 import pdb
 import visdom
 
@@ -24,7 +24,7 @@ class DetectionLoss(torch.nn.Module):
         self.grid_size = grid_size
         self.image_size = image_size
         self.cell_size = torch.FloatTensor(np.array([self.image_size / self.grid_size]))
-        self.plotter = VisdomLinePlotter()
+        self.plotter = DetectionLossPlotter(buffer_size=20)
         self.iteration = 0
 
     def forward(self, output, target):
@@ -86,7 +86,7 @@ class DetectionLoss(torch.nn.Module):
         pw = pw.permute(3, 1, 2, 0)
         ph = ph.permute(3, 1, 2, 0)
 
-        # pdb.set_trace()
+        #pdb.set_trace()
 
         tx = torch.mul(I_obj, tx.expand(self.num_boxes, self.grid_size, self.grid_size, batch_size).permute(3, 2, 1, 0))
         ty = torch.mul(I_obj, ty.expand(self.num_boxes, self.grid_size, self.grid_size, batch_size).permute(3, 2, 1, 0))
@@ -105,27 +105,16 @@ class DetectionLoss(torch.nn.Module):
         one_hot_label[torch.arange(0, batch_size).long(), label.long() - 1, cell_x, cell_y] = 1
         one_hot_label = Variable(one_hot_label).cuda()
 
-        coord_loss = (self.coord_scale * torch.sum(I_obj*((tx - px)**2 + (ty - py)**2)) + \
-                     self.coord_scale * torch.sum(I_obj*((t_sqrt_w - p_sqrt_w)**2 + (t_sqrt_h - p_sqrt_h)**2)))
+        coord_loss = self.coord_scale * torch.sum(I_obj*((tx - px)**2 + (ty - py)**2)) + \
+                     self.coord_scale * torch.sum(I_obj*((t_sqrt_w - p_sqrt_w)**2 + (t_sqrt_h - p_sqrt_h)**2))
 
         object_loss = torch.sum(I_obj * (tc - pc)**2) + \
                       self.noobj_scale * torch.sum(I_noobj * (tc - pc)**2)
 
         class_loss = torch.sum(I_obj[:, :, :, 0] * torch.sum((F.softmax(class_confidence) - one_hot_label)**2, 1))
 
-        # print(F.softmax(class_confidence).data.cpu().numpy()[0, :, cell_x[0], cell_y[0]])
-        # print(one_hot_label.data.cpu().numpy()[0, :, cell_x[0], cell_y[0]])
-        # print(np.argmax(F.softmax(class_confidence).data.cpu().numpy()[0, :, cell_x[0], cell_y[0]]))
-        # print(np.argmax(one_hot_label.data.cpu().numpy()[0, :, cell_x[0], cell_y[0]]))
-       
-        #pdb.set_trace()
-        self.plotter.plot("class loss", 'train', self.iteration, class_loss.data.cpu().numpy()[0])
-        self.plotter.plot("coord loss", 'train', self.iteration, coord_loss.data.cpu().numpy()[0])
-        self.plotter.plot("object loss", 'train', self.iteration, object_loss.data.cpu().numpy()[0])
-        self.plotter.plot("object loss [OBJ]", 'train', self.iteration, torch.sum(I_obj * (tc - pc)**2).data.cpu().numpy()[0])
-        self.plotter.plot("object loss [NOOBJ]", 'train', self.iteration, torch.sum(I_noobj * (tc - pc)**2).data.cpu().numpy()[0])
-        self.plotter.plot("Average IoU", 'train', self.iteration, np.mean(confIoUs))
         self.iteration += 1
+        self.plotter.plot(class_loss, object_loss, coord_loss, confIoUs, self.iteration)
 
         Logger.log_losses([cell_px, cell_py, cell_pw, cell_ph], [cell_tx, cell_ty, cell_tw, cell_th], coord_loss, object_loss, class_loss, confIoUs)
 

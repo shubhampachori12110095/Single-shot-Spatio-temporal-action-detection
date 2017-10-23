@@ -3,6 +3,7 @@ ucf_annotations: '/export/mlrg/aelnouby/projects/Datasets/UCF24/finalAnnots.mat'
 #ucf_flowDir: '/export/mlrg/aelnouby/projects/Datasets/UCF24/flowImages/'
 ucf_flowDir: '/export/mlrg/aelnouby/projects/Datasets/UCF24/encodedFlow/'
 ucf_rgbImages: '/export/mlrg/aelnouby/projects/Datasets/UCF24/rgb/'
-ucf_dataset: '/scratch/aelnouby/ucf24/ucf24.hdf5'
+ucf_dataset: '/scratch/aelnouby/ucf24_dataset/ucf24.hdf5'
+ucf_tinyDataset: '/scratch/aelnouby/ucf24_dataset/tiny_ucf24.hdf5'
 
 

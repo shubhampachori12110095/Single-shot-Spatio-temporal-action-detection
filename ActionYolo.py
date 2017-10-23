@@ -76,14 +76,14 @@ class ActionYolo(nn.Module):
         ).cuda()
 
         # Aggregation Layer
-        self.conv25 = nn.Conv2d(in_channels=2048, out_channels=self.b*5 + self.c, kernel_size=1)
+        self.conv25 = nn.Conv2d(in_channels=1024, out_channels=self.b*5 + self.c, kernel_size=1)
 
     def forward(self, rgb, opticalFlow):
 
         x = self.spatialNet.forward(rgb)
         y = self.temporalNet.forward(opticalFlow)
 
-        output = self.conv25(torch.cat([x, y], 1))
+        output = self.conv25(0.5 * x + 0.5 * y)
 
         return output
 

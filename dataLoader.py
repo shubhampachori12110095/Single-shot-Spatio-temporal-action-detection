@@ -12,9 +12,10 @@ import ActionYolo
 import pdb
 from PIL import Image
 import cv2
+import torch
 from torch.autograd import Variable
 
-class UCFDataLoader(Dataset):
+class UCFDataSet(Dataset):
 
     def __init__(self, datasetFile, matFile, transform=None, subsample=False):
 
@@ -23,6 +24,7 @@ class UCFDataLoader(Dataset):
         self.annotations = loadmat(matFile)
         self.transform = transform
         self.dataset = None
+        self.output_size = 448
 
     def __len__(self):
         return len(self.annotations['annot'][0])
@@ -48,10 +50,16 @@ class UCFDataLoader(Dataset):
         flow_frames = np.array([np.array(cv2.imdecode(np.fromstring(ff, np.uint8), 1)[..., :2], dtype=float) for ff in encoded_flow_frames], dtype=float).transpose(0, 3, 1, 2)
 
         if self.subsample:
-            idx = range(startFrame - 1, endFrame, 5)
+            idx = np.random.choice(range(startFrame-1, endFrame), 8)
             rgb_frames = rgb_frames[idx]
             flow_frames = flow_frames[idx]
-            bboxes = bboxes[range(0, len(bboxes), 5)]
+            bboxes = bboxes[idx - startFrame + 1]
+
+        rgb_frames = (rgb_frames - np.mean(rgb_frames, axis=(2, 3)).reshape(*rgb_frames.shape[:2], 1, 1))\
+                     / (np.std(rgb_frames, axis=(2, 3)).reshape(*rgb_frames.shape[:2], 1, 1) + 1e-7)
+
+        flow_frames = (flow_frames - np.mean(flow_frames, axis=(2, 3)).reshape(*flow_frames.shape[:2], 1, 1))\
+                      / (np.std(flow_frames, axis=(2, 3)).reshape(*flow_frames.shape[:2], 1, 1) + 1e-7)
 
         sample = {
                   'frames': rgb_frames,
@@ -69,15 +77,7 @@ class UCFDataLoader(Dataset):
 
         return sample
 
-
 class Rescale(object):
-    """Rescale the image in a sample to a given size.
-
-    Args:
-        output_size (tuple or tuple): Desired output size. If tuple, output is
-            matched to output_size. If int, smaller of image edges is matched
-            to output_size keeping aspect ratio the same.
-    """
 
     def __init__(self, output_size):
         assert isinstance(output_size, (int, tuple))

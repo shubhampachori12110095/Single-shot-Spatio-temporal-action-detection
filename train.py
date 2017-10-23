@@ -30,46 +30,50 @@ class Trainer():
 
         self.myDNN = torch.nn.DataParallel(self.net, device_ids=[0, 1, 2])
         self.num_epochs = 1000
-        self.batch_size = 16
+        self.batch_size = 4
 
         self.spatial_channels = 3
         self.temporal_channels = 2
 
     def train(self):
-        dataLoader = DataLoader(self.dataSet, batch_size=1, shuffle=True, pin_memory=True)
+        dataLoader = DataLoader(self.dataSet, batch_size=self.batch_size, shuffle=True, pin_memory=True, num_workers=4)
         criterion = DetectionLoss(self.num_classes, self.num_boxes, 7, self.image_size)
 
-        optimizer = torch.optim.Adam(self.myDNN.parameters(), lr=5e-2)
+        optimizer = torch.optim.Adam(self.myDNN.parameters(), lr=1e-3)
+	#examples_queue = Queue(32)
 
         for epoch in range(self.num_epochs):
-            print("Epoch : ", epoch)
             for ex in dataLoader:
-                frames = ex['frames'][0]
-                label = ex['action'][0]
-                start_frame = ex['startFrame'][0] - 1
-                end_frame = ex['endFrame'][0] - 1
-                action_bbox = ex['bbox'][0]
-                # frames = frames[start_frame:end_frame + 1]
-                flow_images = ex['flowFrames'][0]#[start_frame:end_frame + 1]
+                print("Epoch : ", epoch)
+                frames = ex['frames']
+                label = ex['action']
+                #start_frame = ex['startFrame'] - 1
+                #end_frame = ex['endFrame'] - 1
+                action_bbox = ex['bbox']
+                flow_images = ex['flowFrames']
+                #pdb.set_trace()
+                permutation = np.random.permutation(np.prod(frames.size()[:2]))
+                dtype = torch.LongTensor              
+                frames = frames.view(int(np.prod(frames.size()[:2])), self.spatial_channels, 240, 320)[dtype(permutation)]
+                flow_images = flow_images.view(int(np.prod(flow_images.size()[:2])), self.temporal_channels, 240, 320)[dtype(permutation)]
+                action_bbox = action_bbox.view(int(np.prod(action_bbox.size()[:2])), 4)[dtype(permutation)]
+                label = torch.FloatTensor(np.array([item for item in label for _ in range(8)], dtype=float))[dtype(permutation)]
 
-                for b in range(0, len(frames), self.batch_size):
+                print(frames.size())
+                batch = frames
+                batch_flow = flow_images
 
-                    print("Epoch:" + str(epoch) + ", frames : ", str(b) + "-" + str(b+self.batch_size))
+                batch_flow = Variable(batch_flow.float()).cuda()
 
-                    batch = frames[b : b + self.batch_size]
-                    batch_flow = flow_images[b : b + self.batch_size]
+                batch = Variable(batch.float()).cuda()
 
-                    batch_flow = Variable(batch_flow.float()).cuda()
+                output = self.myDNN.forward(batch, batch_flow)
+                target = action_bbox, label
 
-                    batch = Variable(batch.float()).cuda()
+                loss = criterion(output, target)
+                optimizer.zero_grad()
 
-                    output = self.myDNN.forward(batch, batch_flow)
-                    target = action_bbox[b : b + self.batch_size], label
+                loss.backward()
+                optimizer.step()
 
-                    loss = criterion(output, target)
-                    optimizer.zero_grad()
-
-                    loss.backward()
-                    optimizer.step()
-
-                    torch.save(self.net.state_dict(), 'models/' + str(epoch) + '.pth')
+            torch.save(self.net.state_dict(), 'models/' + str(epoch) + '.pth')

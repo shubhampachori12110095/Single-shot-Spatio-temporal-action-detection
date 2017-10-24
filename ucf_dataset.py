@@ -17,40 +17,47 @@ from torch.autograd import Variable
 
 class UCFDataSet(Dataset):
 
-    def __init__(self, datasetFile, matFile, transform=None, subsample=False):
+    def __init__(self, datasetFile, transform=None, subsample=False, split=0):
 
         self.datasetFile = datasetFile
         self.subsample = subsample
-        self.annotations = loadmat(matFile)
         self.transform = transform
         self.dataset = None
         self.output_size = 448
+        self.split = 'train' if split == 0 else 'test' if split == 1 else 'tiny'
+        self.h5py2int = lambda x: int(np.array(x))
 
     def __len__(self):
-        return len(self.annotations['annot'][0])
+        if self.dataset is None:
+            self.dataset = h5py.File(self.datasetFile, mode='r')
+        data_size = len(self.dataset) if self.split == 'tiny' else len(self.dataset[self.split])
+        return data_size
 
     def __getitem__(self, idx):
         if self.dataset is None:
             self.dataset = h5py.File(self.datasetFile, mode='r')
 
-        example_name = self.annotations['annot'][0][idx][1][0]
+        dataset = self.dataset if self.split == 'tiny' else self.dataset[self.split]
 
-        action = self.annotations['annot'][0][idx][2][0][0][2][0][0]
-        startFrame = self.annotations['annot'][0][idx][2][0][0][1][0][0]
-        endFrame = self.annotations['annot'][0][idx][2][0][0][0][0][0]
+        example_name = [k for k in dataset.keys()][idx]
+
+        action = self.h5py2int(dataset[example_name]['annot']['action'])
+        startFrame = self.h5py2int(dataset[example_name]['annot']['startFrame'])
+        endFrame = self.h5py2int(dataset[example_name]['annot']['endFrame'])
 
         # bboxes (x1, y2, w, h) in other words upper left corner, width and height
-        bboxes = self.annotations['annot'][0][idx][2][0][0][3]
-        framesCount = self.annotations['annot'][0][idx][0][0]
+        bboxes = np.array(dataset[example_name]['annot']['bboxes'])
 
-        encoded_rgb_frames = self.dataset['rgb'][example_name.split('/')[-1]]
-        encoded_flow_frames = self.dataset['flow'][example_name.split('/')[-1]]
+        encoded_rgb_frames = dataset[example_name]['rgb']
+        encoded_flow_frames = dataset[example_name]['flow']
 
-        rgb_frames = np.array([np.array(Image.open(io.BytesIO(im)), dtype=float) for im in encoded_rgb_frames], dtype=float).transpose(0, 3, 1, 2)
-        flow_frames = np.array([np.array(cv2.imdecode(np.fromstring(ff, np.uint8), 1)[..., :2], dtype=float) for ff in encoded_flow_frames], dtype=float).transpose(0, 3, 1, 2)
+        rgb_frames = np.array([np.array(Image.open(io.BytesIO(im)), dtype=float) for im in encoded_rgb_frames], dtype=float)\
+                    .transpose(0, 3, 1, 2)
+        flow_frames = np.array([np.array(cv2.imdecode(np.fromstring(ff, np.uint8), 1)[..., :2], dtype=float) for ff in encoded_flow_frames], dtype=float)\
+                    .transpose(0, 3, 1, 2)
 
         if self.subsample:
-            idx = np.random.choice(range(startFrame-1, endFrame), 8)
+            idx = np.random.choice(range(startFrame-1, endFrame), 16)
             rgb_frames = rgb_frames[idx]
             flow_frames = flow_frames[idx]
             bboxes = bboxes[idx - startFrame + 1]
@@ -73,7 +80,7 @@ class UCFDataSet(Dataset):
         if self.transform:
             sample = self.transform(sample)
 
-        print(example_name.split('/')[-1])
+        print(example_name)
 
         return sample
 

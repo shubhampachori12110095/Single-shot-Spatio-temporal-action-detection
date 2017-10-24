@@ -77,6 +77,11 @@ def Convert(actionPath, example, action, test_set, id, tiny_set):
     ex.create_dataset("flow", data=compressedFlowImages)
 
     annots = ex.create_group("annot")
+
+    if example not in annot_mapping:
+        print("EXCEPTION: ", example)
+        return
+
     example_id = annot_mapping[example]
     annots.create_dataset('action', data=annotations['annot'][0][example_id][2][0][0][2][0][0])
     annots.create_dataset('startFrame', data=annotations['annot'][0][example_id][2][0][0][1][0][0])
@@ -93,7 +98,7 @@ def Convert(actionPath, example, action, test_set, id, tiny_set):
         tiny_annots.create_dataset('endFrame', data=annotations['annot'][0][example_id][2][0][0][0][0][0])
         tiny_annots.create_dataset('bboxes', data=annotations['annot'][0][example_id][2][0][0][3])
 
-    print(example, ", IsTest: ", id in test_set)
+    print(example, ", IsTrain: ", id in test_set)
 
 tiny_set = np.random.choice(range(24), 3, replace=True)
 print(tiny_set)
@@ -109,3 +114,4 @@ for label, action in enumerate(sorted(os.listdir(rootDir))):
             test_set = np.random.choice(range(len(examples_files)), int(len(examples_files) / 3.0), replace=True)
             for id, example in enumerate(examples_files):
                 Convert(actionPath, example, action, test_set, id, label in tiny_set)
+

@@ -5,7 +5,7 @@ import torch.nn.parallel
 
 
 class ActionYolo(nn.Module):
-    def __init__(self, num_class, bbox_num=2):
+    def __init__(self, num_class, bbox_num=2, fusion='AVERAGE'):
         super(ActionYolo, self).__init__()
         self.b = bbox_num
         self.c = num_class

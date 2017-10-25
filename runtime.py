@@ -1,6 +1,42 @@
 from train import Trainer
+import argparse
 
-trainer = Trainer(init_model='models/21.pth')
+parser = argparse.ArgumentParser()
+parser.add_argument("--init")
+parser.add_argument("-valid", default=False, action='store_true')
+parser.add_argument("--batch_num", default=2, type=int)
+parser.add_argument("--num_workers", default=4, type=int)
+parser.add_argument("--lr", default=1e-3, type=float)
+parser.add_argument("--fusion", default='AVERAGE')
+parser.add_argument("--plot_rate", default=50, type=int)
+
+args = parser.parse_args()
+
+trainer = Trainer(init_model=args.init,
+                  use_valid=args.valid,
+                  batch_num= args.batch_num,
+                  num_workers=args.num_workers,
+                  lr=args.lr,
+                  fusion=args.fusion,
+                  plot_rate=args.plot_rate)
+
+print('---------- Experiment Configurations -------------')
+if args.init is not None:
+    print("Init Model: ", args.init)
+if args.valid is not None:
+    print("Valid Dataset: ", args.valid)
+if args.batch_num is not None:
+    print("Batch Num: ", args.batch_num)
+if args.num_workers is not None:
+    print("Num Workers: ", args.num_workers)
+if args.lr is not None:
+    print("Learning Rate: ", args.lr)
+if args.fusion is not None:
+    print("Fusion Method: ", args.fusion)
+if args.plot_rate is not None:
+    print("Plot Rate: ", args.plot_rate)
+print('----------------------------------------------')
+
 trainer.train()
 
 # from inference import Inference
@@ -37,5 +73,5 @@ trainer.train()
 # flow_images = Variable(flow_images.float()).cuda()
 # frames = Variable(frames.float()).cuda()
 #
-# predictor = Inference('models/3.pth')
+# predictor = Inference('models/21Oct/112.pth')
 # predictor.detect(frames[:8], flow_images[:8])

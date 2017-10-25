@@ -24,20 +24,23 @@ class UCFDataSet(Dataset):
         self.transform = transform
         self.dataset = None
         self.output_size = 448
-        self.split = 'train' if split == 0 else 'test' if split == 1 else 'tiny'
+        self.split = 'train' if split == 0 else 'valid' if split == 1 else 'test'
         self.h5py2int = lambda x: int(np.array(x))
+        self.label_mapping = {}
+        self.current_label = 1
 
     def __len__(self):
         if self.dataset is None:
             self.dataset = h5py.File(self.datasetFile, mode='r')
-        data_size = len(self.dataset) if self.split == 'tiny' else len(self.dataset[self.split])
-        return data_size
+
+        return len(self.dataset[self.split])
+
 
     def __getitem__(self, idx):
         if self.dataset is None:
             self.dataset = h5py.File(self.datasetFile, mode='r')
 
-        dataset = self.dataset if self.split == 'tiny' else self.dataset[self.split]
+        dataset = self.dataset[self.split]
 
         example_name = [k for k in dataset.keys()][idx]
 
@@ -57,7 +60,7 @@ class UCFDataSet(Dataset):
                     .transpose(0, 3, 1, 2)
 
         if self.subsample:
-            idx = np.random.choice(range(startFrame-1, endFrame), 16)
+            idx = np.random.choice(range(startFrame-1, endFrame), 8)
             rgb_frames = rgb_frames[idx]
             flow_frames = flow_frames[idx]
             bboxes = bboxes[idx - startFrame + 1]
@@ -79,8 +82,6 @@ class UCFDataSet(Dataset):
 
         if self.transform:
             sample = self.transform(sample)
-
-        print(example_name)
 
         return sample
 

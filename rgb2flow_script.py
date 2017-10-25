@@ -37,16 +37,21 @@ print("Finished mapping")
 rootDir = config['ucf_rootDir']
 flowDir = config['ucf_flowDir']
 datasetDir = config['ucf_dataset']
-tinyDatasetDir = config['ucf_tinyDataset']
+# tinyDatasetDir = config['ucf_tinyDataset']
 
 f = h5py.File(datasetDir, 'w')
 train = f.create_group('train')
+valid = f.create_group('valid')
 test = f.create_group('test')
-tiny_datset = h5py.File(tinyDatasetDir, 'w')
+# tiny_datset = h5py.File(tinyDatasetDir, 'w')
 
 #Define Conversion Method
-def Convert(actionPath, example, action, test_set, id, tiny_set):
+def Convert(actionPath, example, action, test_set, id, tiny_set, valid_set):
     print("Started: ", example)
+    if example not in annot_mapping:
+        print("EXCEPTION: ", example)
+        return
+
     examplePath = os.path.join(actionPath, example)
 
     frames = []
@@ -65,10 +70,17 @@ def Convert(actionPath, example, action, test_set, id, tiny_set):
         r, buf = cv2.imencode('.jpg', ff)
         compressedFlowImages.append(buf.tostring())
 
+    split = ""
+
     if id in test_set:
         ex = test.create_group(example)
+        split = 'test'
+    elif id in valid_set:
+        ex = valid.create_group(example)
+        split = 'valid'
     else:
         ex = train.create_group(example)
+        split = 'train'
 
     if debug:
         pdb.set_trace()
@@ -78,9 +90,7 @@ def Convert(actionPath, example, action, test_set, id, tiny_set):
 
     annots = ex.create_group("annot")
 
-    if example not in annot_mapping:
-        print("EXCEPTION: ", example)
-        return
+
 
     example_id = annot_mapping[example]
     annots.create_dataset('action', data=annotations['annot'][0][example_id][2][0][0][2][0][0])
@@ -88,19 +98,19 @@ def Convert(actionPath, example, action, test_set, id, tiny_set):
     annots.create_dataset('endFrame', data=annotations['annot'][0][example_id][2][0][0][0][0][0])
     annots.create_dataset('bboxes', data=annotations['annot'][0][example_id][2][0][0][3])
 
-    if tiny_set:
-        tiny_ex = tiny_datset.create_group(example)
-        tiny_ex.create_dataset("rgb", data=frames)
-        tiny_ex.create_dataset("flow", data=compressedFlowImages)
-        tiny_annots = tiny_ex.create_group("annot")
-        tiny_annots.create_dataset('action', data=annotations['annot'][0][example_id][2][0][0][2][0][0])
-        tiny_annots.create_dataset('startFrame', data=annotations['annot'][0][example_id][2][0][0][1][0][0])
-        tiny_annots.create_dataset('endFrame', data=annotations['annot'][0][example_id][2][0][0][0][0][0])
-        tiny_annots.create_dataset('bboxes', data=annotations['annot'][0][example_id][2][0][0][3])
+    # if tiny_set:
+    #     tiny_ex = tiny_datset.create_group(example)
+    #     tiny_ex.create_dataset("rgb", data=frames)
+    #     tiny_ex.create_dataset("flow", data=compressedFlowImages)
+    #     tiny_annots = tiny_ex.create_group("annot")
+    #     tiny_annots.create_dataset('action', data=annotations['annot'][0][example_id][2][0][0][2][0][0])
+    #     tiny_annots.create_dataset('startFrame', data=annotations['annot'][0][example_id][2][0][0][1][0][0])
+    #     tiny_annots.create_dataset('endFrame', data=annotations['annot'][0][example_id][2][0][0][0][0][0])
+    #     tiny_annots.create_dataset('bboxes', data=annotations['annot'][0][example_id][2][0][0][3])
 
-    print(example, ", IsTrain: ", id in test_set)
+    print(example, ", IsTrain: ", split)
 
-tiny_set = np.random.choice(range(24), 3, replace=True)
+tiny_set = np.random.choice(range(24), 3, replace=False)
 print(tiny_set)
 for label, action in enumerate(sorted(os.listdir(rootDir))):
     actionPath = os.path.join(rootDir, action)
@@ -111,7 +121,9 @@ for label, action in enumerate(sorted(os.listdir(rootDir))):
         else:
             examples_files = sorted(os.listdir(os.path.join(rootDir, action)))
             # Do 2:1 Split
-            test_set = np.random.choice(range(len(examples_files)), int(len(examples_files) / 3.0), replace=True)
+            test_set = np.random.choice(range(len(examples_files)), int(len(examples_files) / 3.0), replace=False)
+            valid_set = np.random.choice([x for x in range(len(examples_files)) if x not in test_set], int((len(examples_files) - len(test_set))/ 10.0), replace=False)
+            print(len(valid_set), len(test_set), len(examples_files))
             for id, example in enumerate(examples_files):
-                Convert(actionPath, example, action, test_set, id, label in tiny_set)
+                Convert(actionPath, example, action, test_set, id, label in tiny_set, valid_set)
 
